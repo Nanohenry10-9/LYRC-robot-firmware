@@ -34,7 +34,35 @@ int8_t ourTag() {
 
 bool rfid = 1;
 
+void isr_process_encoder1(void) {
+  if(digitalRead(Encoder_1.getPortB()) == 0) {
+    Encoder_1.pulsePosMinus();
+  } else {
+    Encoder_1.pulsePosPlus();
+  }
+}
+
+void isr_process_encoder2(void) {
+  if(digitalRead(Encoder_2.getPortB()) == 0) {
+    Encoder_2.pulsePosMinus();
+  } else {
+    Encoder_2.pulsePosPlus();
+  }
+}
+
+void isr_process_encoder3(void) {
+  if(digitalRead(lifter.getPortB()) == 0) {
+    lifter.pulsePosMinus();
+  } else {
+    lifter.pulsePosPlus();
+  }
+}
+
 void setup() {
+  attachInterrupt(Encoder_1.getIntNum(), isr_process_encoder1, RISING);
+  attachInterrupt(Encoder_2.getIntNum(), isr_process_encoder2, RISING);
+  attachInterrupt(lifter.getIntNum(), isr_process_encoder3, RISING);
+  
   Serial.begin(115200);
   Serial3.begin(115200);
   pinMode(LED_BUILTIN, OUTPUT);
@@ -104,6 +132,9 @@ void loop() {
       dispatch(i);
     }
   }
+  Encoder_1.loop();
+  Encoder_2.loop();
+  lifter.loop();
   setSpeed((int16_t)(rec[8] * 2.25), (int16_t)(rec[9] * 2.25));
   delay(1);
 }
@@ -132,6 +163,13 @@ void dispatch(uint8_t a) {
           case S1_OUT_S2_IN: Serial3.write("Left: WHITE      Right: BLACK\n"); break;
           case S1_OUT_S2_OUT: Serial3.write("Left: WHITE      Right: WHITE\n"); break;
         }
+        Serial3.write("Left motor: ");
+        Serial3.print(Encoder_1.getCurPos());
+        Serial3.write("; right motor: ");
+        Serial3.print(-Encoder_2.getCurPos());
+        Serial3.write("; lifter motor: ");
+        Serial3.print(lifter.getCurPos());
+        Serial3.write("\n");
       }
       break;
     case 6:
