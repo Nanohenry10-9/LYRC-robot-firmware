@@ -10,6 +10,7 @@ MeEncoderOnBoard Encoder_1(SLOT1);
 MeEncoderOnBoard Encoder_2(SLOT2);
 MeEncoderOnBoard lifter(SLOT3);
 MeMegaPiDCMotor dc(PORT4B);
+MeLineFollower lf(PORT_5);
 
 void setSpeed(int16_t l, int16_t r) {
   Encoder_1.setMotorPwm(r);
@@ -22,7 +23,7 @@ uint8_t data[16], key[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 uint8_t TEAMCODE = 1;
 
 int8_t ourTag() {
-  success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 1);
+  success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 100);
   if (!success) {
     return -1;
   }
@@ -123,8 +124,15 @@ void dispatch(uint8_t a) {
         }
       }
       break;
-    case 5:
-      Serial3.write("$nHomebase detection: Not implemented yet\n");
+    case 5: {
+        int ld = lf.readSensors();
+        switch (ld) {
+          case S1_IN_S2_IN: Serial3.write("Left: BLACK      Right: BLACK\n"); break;
+          case S1_IN_S2_OUT: Serial3.write("Left: BLACK      Right: WHITE\n"); break;
+          case S1_OUT_S2_IN: Serial3.write("Left: WHITE      Right: BLACK\n"); break;
+          case S1_OUT_S2_OUT: Serial3.write("Left: WHITE      Right: WHITE\n"); break;
+        }
+      }
       break;
     case 6:
       Serial3.write("$nCalibration: Not implemented yet\n");
