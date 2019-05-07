@@ -58,6 +58,21 @@ void isr_process_encoder3(void) {
   }
 }
 
+double angle = 0.0, locX = 0.0, locY = 0.0, a1 = 0.0, a2 = 0.0, s1 = 0.0, s2 = 0.0;
+
+double K1 = 1, K2 = -1;
+double R = 0.0333, P = 0.085;
+
+void updateLocation() {
+  a1 = radians(Encoder_1.getCurPos()) * K1;
+  a2 = radians(Encoder_2.getCurPos()) * K2;
+  s1 = radians(Encoder_1.getCurrentSpeed()) * K1;
+  s2 = radians(Encoder_2.getCurrentSpeed()) * K2;
+  angle = 0.5 * (((R * a1) / P) - ((R * a2) / P));
+  locX += (0.5 * (R * s1 + R * s2)) * cos(angle);
+  locY += (0.5 * (R * s1 + R * s2)) * sin(angle);
+}
+
 void setup() {
   attachInterrupt(Encoder_1.getIntNum(), isr_process_encoder1, RISING);
   attachInterrupt(Encoder_2.getIntNum(), isr_process_encoder2, RISING);
@@ -135,7 +150,8 @@ void loop() {
   Encoder_1.loop();
   Encoder_2.loop();
   lifter.loop();
-  setSpeed((int16_t)(rec[8] * 2.25), (int16_t)(rec[9] * 2.25));
+  setSpeed((int16_t)(rec[8] * 2.55), (int16_t)(rec[9] * 2.55));
+  updateLocation();
   delay(1);
 }
 
@@ -163,12 +179,16 @@ void dispatch(uint8_t a) {
           case S1_OUT_S2_IN: Serial3.write("Left: WHITE      Right: BLACK\n"); break;
           case S1_OUT_S2_OUT: Serial3.write("Left: WHITE      Right: WHITE\n"); break;
         }
-        Serial3.write("Left motor: ");
-        Serial3.print(Encoder_1.getCurPos());
-        Serial3.write("; right motor: ");
-        Serial3.print(-Encoder_2.getCurPos());
-        Serial3.write("; lifter motor: ");
-        Serial3.print(lifter.getCurPos());
+        Serial3.write("X: ");
+        Serial3.print(locX*100);
+        Serial3.write("      Y: ");
+        Serial3.print(locY*100);
+        Serial3.write("      Angle: ");
+        Serial3.print(degrees(angle));
+        Serial3.write("      LAngle: ");
+        Serial3.print(degrees(a2));
+        Serial3.write("      RAngle: ");
+        Serial3.print(degrees(a1));
         Serial3.write("\n");
       }
       break;
