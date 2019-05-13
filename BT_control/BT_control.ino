@@ -44,11 +44,15 @@ double sliderEasyControl(double val_in, double val_in_dead_min, double val_in_de
 
   if(val_in <= val_in_dead_max && val_in >= val_in_dead_min )
     val_out = 0;
-  else if(val_in>val_in_dead_max)
-    val_out = slope_max*(val_in-val_in_dead_max);
-  else if(val_in<val_in_dead_min)
+  else if(val_in<val_in_dead_min && val_in>val_in_min)
     val_out = slope_min*(val_in-val_in_dead_min);
-
+  else if(val_in>val_in_dead_max && val_in<val_in_max)
+    val_out = slope_max*(val_in-val_in_dead_max);
+  else if(val_in<=val_in_min)
+    val_out = val_out_min;
+  else if(val_in>=val_in_max)
+    val_out = val_out_max;
+    
   return val_out;
 }
 
