@@ -1,7 +1,8 @@
-#include <MeMegaPi.h>
-
 #include <Wire.h>
 #include <SPI.h>
+
+#include <MeMegaPi.h>
+
 #include <Adafruit_PN532.h>
 
 
@@ -13,7 +14,6 @@ const double max_linear_vel=0.5; // m/s
 const double max_angular_vel=5.0; // rad/s
 
 const double RADS_TO_PWM = 255.0 / 2.10;
-const double RADS_TO_RPM = 60.0 / ( 2 * 3.1415 ); 
 
 
 Adafruit_PN532 nfc(22);
@@ -116,7 +116,8 @@ uint8_t data[16], key[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 uint8_t TEAMCODE = 1;
 
-int8_t ourTag() {
+int8_t ourTag() 
+{
   success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 100);
   if (!success) {
     return -1;
@@ -152,7 +153,8 @@ void isr_process_encoder3(void) {
   }
 }
 
-void updateLocation() {
+void updateLocation()
+{
   a1 = radians(Encoder_1.getCurPos()) * K1;
   a2 = radians(Encoder_2.getCurPos()) * K2;
   s1 = radians(Encoder_1.getCurrentSpeed()) * K1;
@@ -162,28 +164,8 @@ void updateLocation() {
   locY += (0.5 * (R * s1 + R * s2)) * sin(angle);
 }
 
-void setup() {
-
-  Encoder_1.setMotionMode(PWM_MODE);
-  Encoder_2.setMotionMode(PWM_MODE);
-  
-  attachInterrupt(Encoder_1.getIntNum(), isr_process_encoder1, RISING);
-  attachInterrupt(Encoder_2.getIntNum(), isr_process_encoder2, RISING);
-  attachInterrupt(lifter.getIntNum(), isr_process_encoder3, RISING);
-  
-  Serial.begin(115200);
-  Serial3.begin(115200);
-  pinMode(LED_BUILTIN, OUTPUT);
-  nfc.begin();
-  if (!nfc.getFirmwareVersion()) {
-    rfid = 0;
-    //while (1);
-  } else {
-    nfc.SAMConfig();
-  }
-}
-
-int8_t chksum(int8_t *arr) {
+int8_t chksum(int8_t *arr)
+{
   int8_t s = 0;
   for (uint8_t i = 0; i < 10; i++) {
     s -= (*(arr + i) - 1);
@@ -196,86 +178,29 @@ int8_t rec[10] =  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 int8_t disp[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 int8_t next[11] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-void loop() 
+void dispatch(uint8_t a)
 {
-  if (Serial3.available()) {
-    int8_t r = Serial3.read();
-    if (r == syncChar) {
-      dCount = 0;
-    } else {
-      next[dCount++] = r;
-      if (dCount == 11) {
-        if (chksum(next) == next[10]) {
-          digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-          for (uint8_t i = 0; i < 10; i++) {
-            if (!next[i] && disp[i]) {
-              disp[i] = 0;
-            }
-            rec[i] = next[i];
-          }
-        }
-      }
-    }
-  }
-  
-  // Lifter
-  if (rec[2] && rec[3]) {
-    lifter.setMotorPwm(0);
-  } else if (rec[2]) {
-    lifter.setMotorPwm(-255);
-  } else if (rec[3]) {
-    lifter.setMotorPwm(255);
-  } else {
-    lifter.setMotorPwm(0);
-  }
-  
-  // Grip
-  if (rec[0] && rec[1]) {
-    dc.run(0);
-  } else if (rec[0]) {
-    dc.run(-255);
-  } else if (rec[1]) {
-    dc.run(255);
-  } else {
-    dc.run(0);
-  }
-  
-  //
-  for (uint8_t i = 4; i <= 7; i++) {
-    if (rec[i] && !disp[i]) {
-      disp[i] = 1;
-      dispatch(i);
-    }
-  }
-  
-  // Cmd robot velocity: linear and angular
-  double cmd_linear_vel_per = sliderEasyControl((double)(rec[9]), -10, 10, -100, -100, 100, 100);
-  double cmd_angular_vel_per = sliderEasyControl((double)(rec[8]), -10, 10, -100, -100, 100, 100);
-  
-  setVelocityPercRobot(cmd_linear_vel_per, cmd_angular_vel_per);
-
-  //
-  updateLocation();
-  delay(1);
-
-  //
-  lifter.loop();
-
-  return;
-}
-
-void dispatch(uint8_t a) {
-  switch (a) {
+  switch (a) 
+  {
+    // RFID Read
     case 4:
-      if (!rfid) {
+      if (!rfid) 
+      {
         Serial3.write("$bRFID: No RFID reader present\n");
-      } else {
+      } 
+      else 
+      {
         int8_t t = ourTag();
-        if (t == -1) {
+        if (t == -1) 
+        {
           Serial3.write("$bRFID: No tag present\n");
-        } else if (t == 0) {
+        } 
+        else if (t == 0) 
+        {
           Serial3.write("$bRFID: Not our tag\n");
-        } else if (t == 1) {
+        } 
+        else if (t == 1) 
+        {
           Serial3.write("$gRFID: Our tag, GO!\n");
         }
       }
@@ -309,16 +234,20 @@ void dispatch(uint8_t a) {
       Serial3.write("$gMegaPi running, uptime ");
       sendUptime();
       Serial3.write(", ");
-      if (rfid) {
+      if (rfid) 
+      {
         Serial3.write("RFID OK\n");
-      } else {
+      } 
+      else 
+      {
         Serial3.write("RFID not initialized\n");
       }
       break;
   }
 }
 
-void sendUptime() {
+void sendUptime()
+{
   uint32_t t = millis();
   uint32_t s = (t / 1000) % 60;
   uint32_t m = ((t / 1000) / 60) % 60;
@@ -328,4 +257,106 @@ void sendUptime() {
   Serial3.write((s > 9) ? ((s / 10) % 10) + '0' : '0');
   Serial3.write((s % 10) + '0');
   Serial3.write('s');
+}
+
+// setup() function
+void setup()
+{
+
+  Encoder_1.setMotionMode(PWM_MODE);
+  Encoder_2.setMotionMode(PWM_MODE);
+  
+  attachInterrupt(Encoder_1.getIntNum(), isr_process_encoder1, RISING);
+  attachInterrupt(Encoder_2.getIntNum(), isr_process_encoder2, RISING);
+  attachInterrupt(lifter.getIntNum(), isr_process_encoder3, RISING);
+  
+  Serial.begin(115200);
+  Serial3.begin(115200);
+  pinMode(LED_BUILTIN, OUTPUT);
+  nfc.begin();
+  if (!nfc.getFirmwareVersion()) 
+  {
+    rfid = 0;
+    //while (1);
+  } 
+  else 
+  {
+    nfc.SAMConfig();
+  }
+}
+
+// loop() function
+void loop() 
+{
+  if (Serial3.available())
+  {
+    int8_t r = Serial3.read();
+    if (r == syncChar)
+    {
+      dCount = 0;
+    } 
+    else
+    {
+      next[dCount++] = r;
+      if (dCount == 11)
+      {
+        if (chksum(next) == next[10])
+        {
+          digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+          for (uint8_t i = 0; i < 10; i++)
+          {
+            if (!next[i] && disp[i]) 
+            {
+              disp[i] = 0;
+            }
+            rec[i] = next[i];
+          }
+        }
+      }
+    }
+  }
+  
+  // Lifter
+  if (rec[2] && rec[3]) {
+    lifter.setMotorPwm(0);
+  } else if (rec[2]) {
+    lifter.setMotorPwm(-255);
+  } else if (rec[3]) {
+    lifter.setMotorPwm(255);
+  } else {
+    lifter.setMotorPwm(0);
+  }
+  //
+  lifter.loop();
+  
+  // Grip
+  if (rec[0] && rec[1]) {
+    dc.run(0);
+  } else if (rec[0]) {
+    dc.run(-255);
+  } else if (rec[1]) {
+    dc.run(255);
+  } else {
+    dc.run(0);
+  }
+  
+  //
+  for (uint8_t i = 4; i <= 7; i++) 
+  {
+    if (rec[i] && !disp[i]) {
+      disp[i] = 1;
+      dispatch(i);
+    }
+  }
+  
+  // Cmd robot velocity: linear and angular
+  double cmd_linear_vel_per = sliderEasyControl((double)(rec[9]), -10, 10, -100, -100, 100, 100);
+  double cmd_angular_vel_per = sliderEasyControl((double)(rec[8]), -10, 10, -100, -100, 100, 100);
+  setVelocityPercRobot(cmd_linear_vel_per, cmd_angular_vel_per);
+
+  //
+  updateLocation();
+  delay(1);
+
+  return;
 }
