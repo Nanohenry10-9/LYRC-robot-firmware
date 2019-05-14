@@ -6,23 +6,32 @@
 #include <Adafruit_PN532.h>
 
 // Robot physical parameters
-const double K1 = 1, K2 = -1;
-const double R = 0.0333, p1 = 0.085, p2 = -0.085;
-const double P = 0.085; // TODO remove
+const double R = 0.03; // m
+// Motor 1 - right
+const double K1 = 1, p1 = -0.085;
+// Motor 2 - left
+const double K2 = -1, p2 = 0.085;
 
 // Robot movement parameters
-const double max_linear_vel=0.5; // m/s
-const double max_angular_vel=5.0; // rad/s
+const double max_linear_vel=0.25; // m/s
+const double max_angular_vel=2.5; // rad/s
 
 // Const
-const double RADS_TO_PWM = 255.0 / 2.10;
+const double RADS_TO_PWM = 255.0 / 6.3; // TODO callibrate!
+const double RADS_TO_RMP = 60.0 / (2.0 * 3.1415);
 
 // Team code
 const uint8_t TEAMCODE = 1;
 
 // Localization related variables
-double a1 = 0.0, a2 = 0.0, s1 = 0.0, s2 = 0.0;
-double angle = 0.0, locX = 0.0, locY = 0.0;
+// Motor 1 - right wheel
+double angle_motor1_pre = 0.0, angle_motor1_cur = 0.0;
+double s1 = 0.0;
+// Motor 2 - left wheel
+double angle_motor2_pre = 0.0, angle_motor2_cur = 0.0;
+double s2 = 0.0;
+// Robot
+double angle_robot_world = 0.0, locX = 0.0, locY = 0.0;
 
 // Communication related variables
 uint8_t dCount = 0, syncChar = 'e';
@@ -48,10 +57,10 @@ bool rfid_reader_enabled = 0;
 // Line Following sensor
 MeLineFollower lf(PORT_5);
 
-// Motor with encoder 1 - movement
+// Motor with encoder 1 - right wheel
 MeEncoderOnBoard Encoder_1(SLOT1);
 
-// Motor with encoder 2 - movement
+// Motor with encoder 2 - left wheel
 MeEncoderOnBoard Encoder_2(SLOT2);
 
 // Motor with encoder 3 - lifter
@@ -94,36 +103,61 @@ double sliderEasyControl(double val_in, double val_in_dead_min, double val_in_de
 }
 
 void setAngSpeedMotors(double ang_speed_m1, double ang_speed_m2)
-{
-  double left_pwm = RADS_TO_PWM*ang_speed_m2;
+{ 
   double right_pwm = RADS_TO_PWM*ang_speed_m1;
+  double left_pwm = RADS_TO_PWM*ang_speed_m2;
 
+  //Serial.write("right_pwm: ");
+  //Serial.print(right_pwm);
+  //Serial.write(" ");
+  //Serial.write("left_pwm: ");
+  //Serial.print(left_pwm);
+  //Serial.write("\n");
+  
   // PWM = [-255, 255]
   right_pwm = saturateVal(right_pwm, -255, 255);
   left_pwm = saturateVal(left_pwm, -255, 255);
+
+  //Serial.write("right_pwm: ");
+  //Serial.print(right_pwm);
+  //Serial.write(" ");
+  //Serial.write("left_pwm: ");
+  //Serial.print(left_pwm);
+  //Serial.write("\n");
   
   //
   Encoder_1.setMotorPwm((int16_t)(right_pwm));
   Encoder_2.setMotorPwm((int16_t)(left_pwm));
+  //Encoder_1.setTarPWM((int16_t)(right_pwm));
+  //Encoder_2.setTarPWM((int16_t)(left_pwm));
 
   //
-  Encoder_1.loop();
-  Encoder_2.loop();
+  Encoder_1.updateSpeed();
+  Encoder_2.updateSpeed();
+  //Encoder_1.loop();
+  //Encoder_2.loop();
+
+  //Serial.write("pwm: ");
+  //Serial.print(right_pwm);
+  //Serial.write(" ");
+  //Serial.write("rad/s: ");
+  //Serial.print(Encoder_1.getCurrentSpeed());
+  //Serial.write("\n");
 
   return;
 }
 
 void setVelocityRobot(double linear_vel, double angular_vel)
 {
-  //Serial3.write("linear_vel: ");
-  //Serial3.print(linear_vel);
-  //Serial3.write(" ");
-  //Serial3.write("angular_vel: ");
-  //Serial3.print(angular_vel);
-  //Serial3.write("\n");
+  double ang_speed_m1 = ( (2*p1)/(K1*R*(p1 - p2)) ) * linear_vel + ( (2*p1*p2)/(K1*R*(p1 - p2)) ) * angular_vel;
+  double ang_speed_m2 = ( -(2*p2)/(K2*R*(p1 - p2)) ) * linear_vel + ( -(2*p1*p2)/(K2*R*(p1 - p2)) ) * angular_vel;
 
-  double ang_speed_m1 = ( (2*p1)/(K1*R*(p1 - p2)) ) * linear_vel + ( -(p1*p2)/(K1*R*(p1 - p2)) ) * angular_vel;
-  double ang_speed_m2 = ( -(2*p2)/(K2*R*(p1 - p2)) ) * linear_vel + ( (p1*p2)/(K2*R*(p1 - p2)) ) * angular_vel;
+  //Serial.write("m1: ");
+  //Serial.print(ang_speed_m1);
+  //Serial.write(" ");
+  //Serial.write("m2: ");
+  //Serial.print(ang_speed_m2);
+  //Serial.write("\n");
 
   setAngSpeedMotors(ang_speed_m1, ang_speed_m2);
 
@@ -132,15 +166,22 @@ void setVelocityRobot(double linear_vel, double angular_vel)
 
 void setVelocityPercRobot(double linear_vel_per, double angular_vel_per)
 {
-  //Serial3.write("linear_vel_per: ");
-  //Serial3.print(linear_vel_per);
-  //Serial3.write(" ");
-  //Serial3.write("angular_vel_per: ");
-  //Serial3.print(angular_vel_per);
-  //Serial3.write("\n");
+  //Serial.write("linear_vel_per: ");
+  //Serial.print(linear_vel_per);
+  //Serial.write(" ");
+  //Serial.write("angular_vel_per: ");
+  //Serial.print(angular_vel_per);
+  //Serial.write("\n");
   
   double linear_vel = linear_vel_per/100*max_linear_vel;
   double angular_vel = angular_vel_per/100*max_angular_vel;
+
+  //Serial.write("linear_vel: ");
+  //Serial.print(linear_vel);
+  //Serial.write(" ");
+  //Serial.write("angular_vel: ");
+  //Serial.print(angular_vel);
+  //Serial.write("\n");
 
   setVelocityRobot(linear_vel, angular_vel);
 
@@ -178,51 +219,56 @@ int8_t readRfidTag(uint8_t team_code)
 
 void operateGripper(int8_t cmd_open, int8_t cmd_close)
 {
+  int16_t cmd_pwm=0;
   if (cmd_open && cmd_close) 
   {
-    dc.run(0);
+    cmd_pwm=0;
   } 
   else if (cmd_open) 
   {
-    dc.run(-255);
+    cmd_pwm=-255;
   } 
   else if (cmd_close) 
   {
-    dc.run(255);
+    cmd_pwm=255;
   } 
   else 
   {
-    dc.run(0);
+    cmd_pwm=0;
   }
+  dc.run(cmd_pwm);
 
   return;
 }
 
 void operateLifter(int8_t cmd_up, int8_t cmd_down)
 {
+  int16_t cmd_pwm=0;
   if (cmd_up && cmd_down) 
   {
-    lifter.setMotorPwm(0);
+    cmd_pwm=0;
   } 
   else if (cmd_up) 
   {
-    lifter.setMotorPwm(-255);
+    cmd_pwm=-255;
   } 
   else if (cmd_down) 
   {
-    lifter.setMotorPwm(255);
+    cmd_pwm=255;
   }
   else 
   {
-    lifter.setMotorPwm(0);
+    cmd_pwm=0;
   }
-  //
-  lifter.loop();
-
+  lifter.setMotorPwm(cmd_pwm);
+  //lifter.setTarPWM(cmd_pwm);
+  lifter.updateSpeed();
+  //lifter.loop();
+  
   return;
 }
 
-void isr_process_encoder1(void) 
+void isrProcessEncoder1(void) 
 {
   if(digitalRead(Encoder_1.getPortB()) == 0) 
   {
@@ -234,7 +280,7 @@ void isr_process_encoder1(void)
   }
 }
 
-void isr_process_encoder2(void) 
+void isrProcessEncoder2(void) 
 {
   if(digitalRead(Encoder_2.getPortB()) == 0) 
   {
@@ -246,7 +292,7 @@ void isr_process_encoder2(void)
   }
 }
 
-void isr_process_encoder3(void) 
+void isrProcessLifter(void) 
 {
   if(digitalRead(lifter.getPortB()) == 0) 
   {
@@ -260,13 +306,39 @@ void isr_process_encoder3(void)
 
 void updateLocation()
 {
-  a1 = radians(Encoder_1.getCurPos()) * K1;
-  a2 = radians(Encoder_2.getCurPos()) * K2;
+  // Info: https://robotics.stackexchange.com/questions/106/what-is-a-suitable-model-for-two-wheeled-robots
+  
+  // Orientation of robot
+  angle_motor1_cur = radians(Encoder_1.getCurPos());
+  angle_motor2_cur = radians(Encoder_2.getCurPos());
+
+  double delta_angle = ( K1*R/(2*p1)*(angle_motor1_cur-angle_motor1_pre))+K2*R/(2*p2)*(angle_motor2_cur-angle_motor2_pre);
+  angle_robot_world += ( K1*R/(2*p1)*(angle_motor1_cur-angle_motor1_pre))+K2*R/(2*p2)*(angle_motor2_cur-angle_motor2_pre);
+  //angle_robot_world += R/(p2-p1)*( K1*(angle_motor1_cur-angle_motor1_pre)-K2*(angle_motor2_cur-angle_motor2_pre) );
+
+
+  //Serial.write("      Angle: ");
+  //Serial.print(degrees(angle_robot_world));
+  //Serial3.write(", ");
+  //Serial3.print(degrees(delta_angle));
+  //Serial3.write("      LAngle: ");
+  //Serial3.print(degrees(angle_motor2_cur));
+  //Serial3.write("      RAngle: ");
+  //Serial3.print(degrees(angle_motor1_cur));
+  //Serial.write("\n");
+
+  // Position of the robot
   s1 = radians(Encoder_1.getCurrentSpeed()) * K1;
   s2 = radians(Encoder_2.getCurrentSpeed()) * K2;
-  angle = 0.5 * (((R * a1) / P) - ((R * a2) / P));
-  locX += (0.5 * (R * s1 + R * s2)) * cos(angle);
-  locY += (0.5 * (R * s1 + R * s2)) * sin(angle);
+  locX += (0.5 * (R * s1 + R * s2)) * cos(angle_robot_world);
+  locY += (0.5 * (R * s1 + R * s2)) * sin(angle_robot_world);
+
+
+  // Update for the nex iteration
+  angle_motor1_pre = angle_motor1_cur;
+  angle_motor2_pre = angle_motor2_cur;
+
+  return;
 }
 
 int8_t chksum(int8_t *arr)
@@ -364,11 +436,11 @@ void dispatch(uint8_t a)
       Serial3.write("      Y: ");
       Serial3.print(locY*100);
       Serial3.write("      Angle: ");
-      Serial3.print(degrees(angle));
+      Serial3.print(degrees(angle_robot_world));
       Serial3.write("      LAngle: ");
-      Serial3.print(degrees(a2));
+      Serial3.print(degrees(angle_motor2_cur));
       Serial3.write("      RAngle: ");
-      Serial3.print(degrees(a1));
+      Serial3.print(degrees(angle_motor1_cur));
       Serial3.write("\n");
     
       break;
@@ -402,31 +474,37 @@ void setup()
   // LED for communication feedback
   pinMode(LED_BUILTIN, OUTPUT);
 
-  // Motor 1 - Wheel
-  Encoder_1.setMotionMode(PWM_MODE);
-  attachInterrupt(Encoder_1.getIntNum(), isr_process_encoder1, RISING);
+  // RFID reader
+  while(!rfid_reader_enabled)
+  {
+    rfid_reader.begin();
+    if (!rfid_reader.getFirmwareVersion()) 
+    {
+      rfid_reader_enabled = 0;
+      Serial3.write("$bRFID: No RFID reader present\n");
+    } 
+    else 
+    {
+      rfid_reader_enabled = 1;
+      rfid_reader.SAMConfig();
+      Serial3.write("$gRFID: RFID reader configured\n");
+    }
+  }
 
-  // Motor 2 - Wheel
-  Encoder_2.setMotionMode(PWM_MODE);
-  attachInterrupt(Encoder_2.getIntNum(), isr_process_encoder2, RISING);
+  // Motor 1 - Right wheel
+  Encoder_1.setMotionMode(DIRECT_MODE);
+  //Encoder_1.setMotionMode(PWM_MODE);
+  attachInterrupt(Encoder_1.getIntNum(), isrProcessEncoder1, RISING);
+
+  // Motor 2 - Left wheel
+  Encoder_2.setMotionMode(DIRECT_MODE);
+  //Encoder_2.setMotionMode(PWM_MODE);
+  attachInterrupt(Encoder_2.getIntNum(), isrProcessEncoder2, RISING);
 
   // Motor 3 - Lifter
-  lifter.setMotionMode(PWM_MODE);
-  attachInterrupt(lifter.getIntNum(), isr_process_encoder3, RISING);
-
-  // RFID reader
-  rfid_reader.begin();
-  if (!rfid_reader.getFirmwareVersion()) 
-  {
-    rfid_reader_enabled = 0;
-    Serial3.write("$bRFID: No RFID reader present\n");
-  } 
-  else 
-  {
-    rfid_reader_enabled = 1;
-    rfid_reader.SAMConfig();
-    Serial3.write("$gRFID: RFID reader configured\n");
-  }
+  lifter.setMotionMode(DIRECT_MODE);
+  //lifter.setMotionMode(PWM_MODE);
+  attachInterrupt(lifter.getIntNum(), isrProcessLifter, RISING);
 
   // RFID read time initialization
   rfid_read_time_prev=millis();
@@ -485,7 +563,7 @@ void loop()
   
   // Cmd robot velocity: linear and angular
   double cmd_linear_vel_per = sliderEasyControl((double)(rec[9]), -10, 10, -100, -100, 100, 100);
-  double cmd_angular_vel_per = sliderEasyControl((double)(rec[8]), -10, 10, -100, -100, 100, 100);
+  double cmd_angular_vel_per = sliderEasyControl((double)(rec[8]), -10, 10, -100, -100, 100, 100);  
   setVelocityPercRobot(cmd_linear_vel_per, cmd_angular_vel_per);
 
   // RFID read tag. At a certain frequency
