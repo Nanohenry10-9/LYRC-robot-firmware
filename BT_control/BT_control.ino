@@ -44,6 +44,11 @@ unsigned long int rfid_read_time_prev;
 bool flag_new_rfid_result = false;
 unsigned long int rfid_read_time_period_ms=500; // ms
 
+// Home detection thread related variables
+unsigned long int home_detection_time_prev;
+bool flag_new_home_detection_result = false;
+unsigned long int home_detection_time_period_ms=500; // ms
+
 // RFID required read variables
 uint8_t success, uid[6], uidLength;
 uint8_t data[16];
@@ -55,7 +60,7 @@ Adafruit_PN532 rfid_reader(22);
 bool rfid_reader_enabled = 0;
 
 // Line Following sensor
-MeLineFollower lf(PORT_5);
+MeLineFollower line_following_sensor(PORT_5);
 
 // Motor with encoder 1 - right wheel
 MeEncoderOnBoard Encoder_1(SLOT1);
@@ -132,10 +137,8 @@ void setAngSpeedMotors(double ang_speed_m1, double ang_speed_m2)
   //Encoder_2.setTarPWM((int16_t)(left_pwm));
 
   //
-  Encoder_1.updateSpeed();
-  Encoder_2.updateSpeed();
-  //Encoder_1.loop();
-  //Encoder_2.loop();
+  Encoder_1.loop();
+  Encoder_2.loop();
 
   //Serial.write("pwm: ");
   //Serial.print(right_pwm);
@@ -262,8 +265,8 @@ void operateLifter(int8_t cmd_up, int8_t cmd_down)
   }
   lifter.setMotorPwm(cmd_pwm);
   //lifter.setTarPWM(cmd_pwm);
-  lifter.updateSpeed();
-  //lifter.loop();
+
+  lifter.loop();
   
   return;
 }
@@ -312,33 +315,75 @@ void updateLocation()
   angle_motor1_cur = radians(Encoder_1.getCurPos());
   angle_motor2_cur = radians(Encoder_2.getCurPos());
 
-  double delta_angle = ( K1*R/(2*p1)*(angle_motor1_cur-angle_motor1_pre))+K2*R/(2*p2)*(angle_motor2_cur-angle_motor2_pre);
-  angle_robot_world += ( K1*R/(2*p1)*(angle_motor1_cur-angle_motor1_pre))+K2*R/(2*p2)*(angle_motor2_cur-angle_motor2_pre);
-  //angle_robot_world += R/(p2-p1)*( K1*(angle_motor1_cur-angle_motor1_pre)-K2*(angle_motor2_cur-angle_motor2_pre) );
+  double delta_angle = -( K1*R/(2*p1)*(angle_motor1_cur-angle_motor1_pre))-K2*R/(2*p2)*(angle_motor2_cur-angle_motor2_pre);
+  angle_robot_world += delta_angle;
 
-
-  //Serial.write("      Angle: ");
+  //Serial.write("Angle: ");
   //Serial.print(degrees(angle_robot_world));
-  //Serial3.write(", ");
-  //Serial3.print(degrees(delta_angle));
-  //Serial3.write("      LAngle: ");
-  //Serial3.print(degrees(angle_motor2_cur));
-  //Serial3.write("      RAngle: ");
-  //Serial3.print(degrees(angle_motor1_cur));
+  //Serial.write(", ");
+  //Serial.print(degrees(delta_angle));
+  //Serial.write(", LA: ");
+  //Serial.print(degrees(angle_motor2_cur));
+  //Serial.write(", RA: ");
+  //Serial.print(degrees(angle_motor1_cur));
   //Serial.write("\n");
 
   // Position of the robot
-  s1 = radians(Encoder_1.getCurrentSpeed()) * K1;
-  s2 = radians(Encoder_2.getCurrentSpeed()) * K2;
-  locX += (0.5 * (R * s1 + R * s2)) * cos(angle_robot_world);
-  locY += (0.5 * (R * s1 + R * s2)) * sin(angle_robot_world);
-
+  locX += (0.5 * (K1*R * (angle_motor1_cur-angle_motor1_pre) + K2*R * (angle_motor2_cur-angle_motor2_pre))) * cos(angle_robot_world);
+  locX += (0.5 * (K1*R * (angle_motor1_cur-angle_motor1_pre) + K2*R * (angle_motor2_cur-angle_motor2_pre))) * sin(angle_robot_world);
 
   // Update for the nex iteration
   angle_motor1_pre = angle_motor1_cur;
   angle_motor2_pre = angle_motor2_cur;
 
   return;
+}
+
+void printLocalizationEstimation()
+{
+  Serial3.write("X (cm): ");
+  Serial3.print(locX*100);
+  Serial3.write(", Y (cm): ");
+  Serial3.print(locY*100);
+  Serial3.write(", Ang (deg): ");
+  Serial3.print(degrees(angle_robot_world));
+  Serial3.write(", LAngle: ");
+  Serial3.print(degrees(angle_motor2_cur));
+  Serial3.write(", RAngle: ");
+  Serial3.print(degrees(angle_motor1_cur));
+  Serial3.write("\n");
+
+  return;
+}
+
+// TODO - IMPROVE!
+int8_t checkHomeBase()
+{
+  return 0;
+  
+  // Read measurement line following sensor
+  int line_following_sensor_meas = line_following_sensor.readSensors();
+
+
+  // Print localization estimation
+  printLocalizationEstimation();
+
+  
+  switch (line_following_sensor_meas) 
+  {
+    case S1_IN_S2_OUT:
+    case S1_OUT_S2_IN:
+    case S1_OUT_S2_OUT:
+      // Not at home base
+      return 0;
+      break;
+    case S1_IN_S2_IN:
+      // At some home base
+      Serial3.write("Left: BLACK      Right: BLACK\n"); 
+      break;
+  }
+
+  return 0;
 }
 
 int8_t chksum(int8_t *arr)
@@ -410,6 +455,26 @@ void onPressRobotCheck()
   return;
 }
 
+// TODO - IMPROVE!
+void onPressHomeBaseCheck()
+{
+  // Read sensor
+  int line_following_sensor_meas = line_following_sensor.readSensors();
+  // Print line following sensor measurement
+  switch (line_following_sensor_meas) 
+  {
+    case S1_IN_S2_IN: Serial3.write("Left: BLACK      Right: BLACK\n"); break;
+    case S1_IN_S2_OUT: Serial3.write("Left: BLACK      Right: WHITE\n"); break;
+    case S1_OUT_S2_IN: Serial3.write("Left: WHITE      Right: BLACK\n"); break;
+    case S1_OUT_S2_OUT: Serial3.write("Left: WHITE      Right: WHITE\n"); break;
+  }
+  
+  // Print localization estimation
+  printLocalizationEstimation();
+
+  return;
+}
+
 void dispatch(uint8_t a)
 {
   switch (a) 
@@ -423,33 +488,14 @@ void dispatch(uint8_t a)
     // Home base check
     case 5: 
     {
-      int ld = lf.readSensors();
-      switch (ld) 
-      {
-        case S1_IN_S2_IN: Serial3.write("Left: BLACK      Right: BLACK\n"); break;
-        case S1_IN_S2_OUT: Serial3.write("Left: BLACK      Right: WHITE\n"); break;
-        case S1_OUT_S2_IN: Serial3.write("Left: WHITE      Right: BLACK\n"); break;
-        case S1_OUT_S2_OUT: Serial3.write("Left: WHITE      Right: WHITE\n"); break;
-      }
-      Serial3.write("X: ");
-      Serial3.print(locX*100);
-      Serial3.write("      Y: ");
-      Serial3.print(locY*100);
-      Serial3.write("      Angle: ");
-      Serial3.print(degrees(angle_robot_world));
-      Serial3.write("      LAngle: ");
-      Serial3.print(degrees(angle_motor2_cur));
-      Serial3.write("      RAngle: ");
-      Serial3.print(degrees(angle_motor1_cur));
-      Serial3.write("\n");
-    
+      onPressHomeBaseCheck();
       break;
     }
-    //
+    // TODO
     case 6:
       Serial3.write("$nCalibration: Not implemented yet\n");
       break;
-    // Status
+    // Robot Status
     case 7:
       onPressRobotCheck();
       break;
@@ -470,6 +516,9 @@ void setup()
   {
     delay(100);
   }
+
+  // Message warning
+  Serial3.write("$bROBOT: Initializing robot. Please wait!\n");
 
   // LED for communication feedback
   pinMode(LED_BUILTIN, OUTPUT);
@@ -506,8 +555,14 @@ void setup()
   //lifter.setMotionMode(PWM_MODE);
   attachInterrupt(lifter.getIntNum(), isrProcessLifter, RISING);
 
-  // RFID read time initialization
+  // RFID read time thread initialization
   rfid_read_time_prev=millis();
+
+  // Home detection time thread initialization
+  home_detection_time_prev=millis();
+
+  // Message warning
+  Serial3.write("$gROBOT: Robot initialized!\n");
 
   return;
 }
@@ -566,6 +621,9 @@ void loop()
   double cmd_angular_vel_per = sliderEasyControl((double)(rec[8]), -10, 10, -100, -100, 100, 100);  
   setVelocityPercRobot(cmd_linear_vel_per, cmd_angular_vel_per);
 
+  // Robot localization estimation
+  updateLocation();
+
   // RFID read tag. At a certain frequency
   unsigned long int rfid_read_time_curr=millis();
   if(rfid_read_time_curr-rfid_read_time_prev > rfid_read_time_period_ms)
@@ -600,12 +658,27 @@ void loop()
       default:
         break;
     }
+    
     // Update time
     rfid_read_time_prev=rfid_read_time_curr;
   }
 
-  //
-  updateLocation();
+  // Home base detection. At a certain frequency
+  // TODO
+  unsigned long int home_detection_time_curr=millis();
+  if(home_detection_time_curr-home_detection_time_prev > home_detection_time_period_ms)
+  {
+    //
+    //Serial3.write("Time: ");
+    //Serial3.print(millis());
+    //Serial3.write("\n");
+
+    // TODO
+    checkHomeBase();
+
+    // Update time
+    home_detection_time_prev=home_detection_time_curr;
+  }
 
   // Sleep
   delay(1);
