@@ -107,6 +107,15 @@ double sliderEasyControl(double val_in, double val_in_dead_min, double val_in_de
   return val_out;
 }
 
+void setMotorCmdOld(int16_t l, int16_t r) {
+  Encoder_1.setMotorPwm(r);
+  Encoder_2.setMotorPwm(-l);
+
+  //
+  Encoder_1.loop();
+  Encoder_2.loop();
+}
+
 void setAngSpeedMotors(double ang_speed_m1, double ang_speed_m2)
 { 
   double right_pwm = RADS_TO_PWM*ang_speed_m1;
@@ -463,14 +472,12 @@ void onPressHomeBaseCheck()
   // Print line following sensor measurement
   switch (line_following_sensor_meas) 
   {
-    case S1_IN_S2_IN: Serial3.write("Left: BLACK      Right: BLACK\n"); break;
-    case S1_IN_S2_OUT: Serial3.write("Left: BLACK      Right: WHITE\n"); break;
-    case S1_OUT_S2_IN: Serial3.write("Left: WHITE      Right: BLACK\n"); break;
-    case S1_OUT_S2_OUT: Serial3.write("Left: WHITE      Right: WHITE\n"); break;
+    case S1_IN_S2_IN: Serial3.write("$gHome base detected\n"); break;
+    default: Serial3.write("$bBase not detected\n"); break;
   }
   
   // Print localization estimation
-  printLocalizationEstimation();
+  //printLocalizationEstimation();
 
   return;
 }
@@ -619,7 +626,8 @@ void loop()
   // Cmd robot velocity: linear and angular
   double cmd_linear_vel_per = sliderEasyControl((double)(rec[9]), -10, 10, -100, -100, 100, 100);
   double cmd_angular_vel_per = sliderEasyControl((double)(rec[8]), -10, 10, -100, -100, 100, 100);  
-  setVelocityPercRobot(cmd_linear_vel_per, cmd_angular_vel_per);
+  //setVelocityPercRobot(cmd_linear_vel_per, cmd_angular_vel_per);
+  setMotorCmdOld((int16_t)(rec[8] * 2.55), (int16_t)(rec[9] * 2.55));
 
   // Robot localization estimation
   updateLocation();
